@@ -32,9 +32,10 @@ class Neo4jManager:
             print("[Neo4j] Driver no instalado — ejecuta: pip install neo4j")
             return
 
-        uri = os.environ.get("NEO4J_URI", "bolt://localhost:7687")
-        user = os.environ.get("NEO4J_USER", "neo4j")
+        uri      = os.environ.get("NEO4J_URI", "bolt://localhost:7687")
+        user     = os.environ.get("NEO4J_USER") or os.environ.get("NEO4J_USERNAME", "neo4j")
         password = os.environ.get("NEO4J_PASSWORD", "")
+        self.database = os.environ.get("NEO4J_DATABASE", None)
 
         if not password:
             print("[Neo4j] NEO4J_PASSWORD no configurada — modo solo-NetworkX")
@@ -45,11 +46,11 @@ class Neo4jManager:
             self.driver = AsyncGraphDatabase.driver(
                 uri,
                 auth=(user, password),
-                connection_timeout=5,       # segundos para establecer conexión TCP
+                connection_timeout=15,      # AuraDB cloud necesita más tiempo
                 max_connection_lifetime=300,
             )
-            # Timeout de 6s para no bloquear el startup si Neo4j no está corriendo
-            await asyncio.wait_for(self.driver.verify_connectivity(), timeout=6.0)
+            # Timeout de 20s para conexiones cloud
+            await asyncio.wait_for(self.driver.verify_connectivity(), timeout=20.0)
             self.connected = True
             print(f"[Neo4j] Conectado a {uri}")
             await self._create_constraints()
@@ -73,7 +74,7 @@ class Neo4jManager:
             "CREATE CONSTRAINT pago_id IF NOT EXISTS FOR (p:Pago) REQUIRE p.id IS UNIQUE",
             "CREATE CONSTRAINT promesa_id IF NOT EXISTS FOR (pr:PromesaPago) REQUIRE pr.id IS UNIQUE",
         ]
-        async with self.driver.session() as session:
+        async with self.driver.session(database=self.database) as session:
             for cypher in constraints:
                 try:
                     await session.run(cypher)
@@ -89,7 +90,7 @@ class Neo4jManager:
         if not self.connected:
             return
 
-        async with self.driver.session() as session:
+        async with self.driver.session(database=self.database) as session:
             # Limpiar grafo anterior
             await session.run("MATCH (n) DETACH DELETE n")
 
@@ -234,7 +235,7 @@ class Neo4jManager:
         """Métricas generales del grafo desde Neo4j."""
         if not self.connected:
             return None
-        async with self.driver.session() as session:
+        async with self.driver.session(database=self.database) as session:
             result = await session.run(
                 """
                 MATCH (c:Cliente)
@@ -287,7 +288,7 @@ class Neo4jManager:
         """Timeline completo de un cliente consultando Neo4j."""
         if not self.connected:
             return None
-        async with self.driver.session() as session:
+        async with self.driver.session(database=self.database) as session:
             # Datos del cliente
             client_result = await session.run(
                 "MATCH (c:Cliente {id: $id}) RETURN c", id=cliente_id
@@ -338,7 +339,7 @@ class Neo4jManager:
         """Métricas de un agente desde Neo4j."""
         if not self.connected:
             return None
-        async with self.driver.session() as session:
+        async with self.driver.session(database=self.database) as session:
             result = await session.run(
                 """
                 MATCH (a:Agente {id: $id})
@@ -372,7 +373,7 @@ class Neo4jManager:
         """Promesas vencidas sin cumplir desde Neo4j."""
         if not self.connected:
             return None
-        async with self.driver.session() as session:
+        async with self.driver.session(database=self.database) as session:
             result = await session.run(
                 """
                 MATCH (c:Cliente)-[:PROMETE]->(pr:PromesaPago)
@@ -397,7 +398,7 @@ class Neo4jManager:
         """Estadísticas del grafo Neo4j para la API de status."""
         if not self.connected:
             return {"connected": False}
-        async with self.driver.session() as session:
+        async with self.driver.session(database=self.database) as session:
             result = await session.run(
                 """
                 MATCH (n) RETURN labels(n)[0] AS tipo, count(n) AS total

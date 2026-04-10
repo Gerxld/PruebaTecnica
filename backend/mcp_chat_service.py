@@ -89,17 +89,18 @@ class MCPChatService:
             return
 
         uri      = os.environ.get("NEO4J_URI", "bolt://localhost:7687")
-        user     = os.environ.get("NEO4J_USER", "neo4j")
+        user     = os.environ.get("NEO4J_USER") or os.environ.get("NEO4J_USERNAME", "neo4j")
         password = os.environ.get("NEO4J_PASSWORD", "")
+        self.database = os.environ.get("NEO4J_DATABASE", None)
 
         if not password:
             return
 
         try:
             self.driver = AsyncGraphDatabase.driver(
-                uri, auth=(user, password), connection_timeout=5,
+                uri, auth=(user, password), connection_timeout=15,
             )
-            await asyncio.wait_for(self.driver.verify_connectivity(), timeout=6.0)
+            await asyncio.wait_for(self.driver.verify_connectivity(), timeout=20.0)
             self.neo4j_available = True
             print(f"[MCP] Conectado a Neo4j en {uri}")
         except Exception as e:
@@ -124,7 +125,7 @@ class MCPChatService:
         safe_query = _add_limit(query)
 
         try:
-            async with self.driver.session() as session:
+            async with self.driver.session(database=self.database) as session:
                 result = await asyncio.wait_for(
                     session.run(safe_query),
                     timeout=10.0,
@@ -153,7 +154,7 @@ class MCPChatService:
         if not self.neo4j_available:
             return {"error": "Neo4j no disponible"}
         try:
-            async with self.driver.session() as session:
+            async with self.driver.session(database=self.database) as session:
                 r = await session.run(
                     """
                     MATCH (c:Cliente)
