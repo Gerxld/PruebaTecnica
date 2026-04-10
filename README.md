@@ -88,6 +88,7 @@ graph TD
 PruebaTecnica/
 ├── backend/
 │   ├── main.py                  # App FastAPI, singletons, todos los endpoints
+│   ├── config.py                # Constantes compartidas: REFERENCE_DATE, REFERENCE_DATE_STR
 │   ├── graph_manager.py         # Grafo NetworkX, ingesta, métricas, consultas
 │   ├── prediction_service.py    # Predicción de pagos (LogisticRegression / heurística)
 │   ├── anomaly_detector.py      # Detección de anomalías (4 detectores)
@@ -468,35 +469,45 @@ El diseño usa un tema oscuro "brutalist" definido completamente en `src/index.c
 - Elimina la dependencia de build-time de Tailwind (purge, JIT) en un proyecto que ya usa Vite con HMR.
 - `ThemeToggle.jsx` puede cambiar el tema en runtime modificando variables CSS del documento sin re-renderizar el árbol de componentes.
 
+### Centralización de constantes compartidas en `config.py`
+
+`backend/config.py` es la fuente única de verdad para las constantes que deben ser consistentes entre módulos:
+
+```python
+REFERENCE_DATE = datetime(2025, 8, 12, tzinfo=timezone.utc)
+REFERENCE_DATE_STR = "2025-08-12"
+```
+
+- `REFERENCE_DATE` (objeto `datetime` con `tzinfo=UTC`) es importada por `graph_manager.py` para determinar si una promesa de pago está vencida.
+- `REFERENCE_DATE_STR` es importada por `neo4j_manager.py` y se pasa como parámetro `$ref_date` en las queries Cypher, lo que evita que la cadena quede literalmente hardcodeada en la query y permite que el driver de Neo4j aplique los índices correctamente.
+
+Antes de este cambio, `graph_manager.py` declaraba `REFERENCE_DATE` de forma local y `neo4j_manager.py` tenía `'2025-08-12'` literalmente incrustado en la query. Cualquier actualización de la fecha requería modificar los dos archivos por separado, con riesgo de inconsistencia silenciosa. La extracción a `config.py` hace que una sola edición actualice ambos módulos simultáneamente.
+
 ---
 
 ## Mejoras futuras identificadas
 
-### 1. Sincronizar `REFERENCE_DATE` entre módulos
-
-`REFERENCE_DATE = datetime(2025, 8, 12)` está hardcodeada de forma independiente en tres archivos: `graph_manager.py`, `prediction_service.py` y `anomaly_detector.py`. Cualquier actualización requiere modificar los tres. La mejora es extraer esta constante a un módulo `config.py` compartido, o leerla de una variable de entorno `REFERENCE_DATE` con fallback a la fecha actual de producción.
-
-### 2. Autenticación de endpoints
+### 1. Autenticación de endpoints
 
 Todos los endpoints están expuestos sin autenticación (`allow_origins=["*"]` en el middleware CORS de `main.py`). En un entorno multiusuario la mejora es agregar autenticación por API key o JWT, restringir CORS a los orígenes permitidos y proteger especialmente `POST /ingest` que reescribe datos en disco.
 
-### 3. WebSocket para actualizaciones en tiempo real
+### 2. WebSocket para actualizaciones en tiempo real
 
 El frontend hace polling al backend cada vez que el usuario navega entre tabs. Con un WebSocket (`/ws/events`) el backend podría notificar al frontend cuando una nueva ingesta completa, eliminando llamadas redundantes y permitiendo dashboards colaborativos donde múltiples usuarios ven el mismo dataset actualizado.
 
-### 4. Persistencia del historial de chat
+### 3. Persistencia del historial de chat
 
 `MCPChatService.chat()` acepta `history` pero el frontend no persiste la conversación entre recargas de página. La mejora es guardar el historial en `localStorage` o en un endpoint `POST /chat/sessions` para que los agentes de cobranza puedan continuar conversaciones previas y el LLM tenga contexto de preguntas anteriores dentro de una sesión de trabajo.
 
-### 5. Tests automatizados del predictor y los detectores
+### 4. Tests automatizados del predictor y los detectores
 
 `PaymentPredictor` y `AnomalyDetector` no tienen tests unitarios. Dado que `PaymentPredictor` tiene una rama de decisión (`>= 10` positivos → LogisticRegression, `< 10` → heurística) y `AnomalyDetector` tiene 4 detectores con umbrales configurables, un conjunto de fixtures de `GraphManager` con datos sintéticos controlados permitiría verificar regresiones al modificar los algoritmos.
 
-### 6. Endpoint de re-entrenamiento explícito
+### 5. Endpoint de re-entrenamiento explícito
 
 `predictor.train(gm)` se llama únicamente en `POST /ingest` y en el arranque. Si el grafo crece por ingests incrementales futuros, debería existir un endpoint `POST /analytics/retrain` que permita re-entrenar el predictor sin forzar una re-ingesta completa del JSON.
 
-### 7. Paginación en `/clientes` y `/agentes`
+### 6. Paginación en `/clientes` y `/agentes`
 
 Los endpoints `GET /clientes` y `GET /agentes` retornan la lista completa sin paginación. Con carteras de miles de deudores esto genera respuestas grandes. La mejora es agregar parámetros `limit` y `offset` (o cursor-based pagination) y aplicar el mismo criterio al endpoint `GET /graph/data` en modo sin `cliente_id`.
 
