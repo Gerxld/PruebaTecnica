@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analizador de Patrones de Llamadas</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,200..900;1,200..900&family=Crimson+Text:ital,wght@0,400;0,600;0,700;1,400;1,600;1,700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
+    <style>
+        body {
+            font-family: 'Crimson Text', serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: white;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        h1 {
+            font-family: 'Crimson Pro', serif;
+            font-size: 2.5rem;
+            font-weight: 400;
+            margin-bottom: 0.5rem;
+            color: #000;
+            letter-spacing: -0.02em;
+        }
+
+        .subtitle {
+            font-size: 1.1rem;
+            color: #666;
+            margin-bottom: 0.25rem;
+            font-weight: normal;
+        }
+
+        .date {
+            font-size: 1rem;
+            color: #999;
+            margin-bottom: 2rem;
+        }
+
+        h2 {
+            font-family: 'Crimson Pro', serif;
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-top: 3rem;
+            margin-bottom: 1rem;
+            color: #000;
+        }
+
+        h3 {
+            font-family: 'Crimson Pro', serif;
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+            color: #333;
+        }
+
+        h4 {
+            font-family: 'Crimson Pro', serif;
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-top: 1.5rem;
+            margin-bottom: 0.75rem;
+            color: #444;
+        }
+
+        p {
+            margin-bottom: 1.25rem;
+            font-size: 1rem;
+            line-height: 1.6;
+        }
+
+        .tldr-box {
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            padding: 1.5rem;
+            margin: 2rem 0;
+            border-radius: 4px;
+        }
+
+        .tldr-box h3 {
+            margin-top: 0;
+            font-size: 1.1rem;
+            color: #495057;
+        }
+
+        .key-metrics {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin: 2rem 0;
+            justify-content: space-between;
+        }
+
+        .metric-card {
+            flex: 1;
+            min-width: 150px;
+            text-align: center;
+            padding: 1rem;
+            border: 1px solid #ddd;
+            background-color: #fafafa;
+        }
+
+        .metric-card .number {
+            font-family: 'Crimson Pro', serif;
+            font-size: 1.8rem;
+            font-weight: 600;
+            color: #000;
+            display: block;
+        }
+
+        .metric-card .label {
+            font-size: 0.85rem;
+            color: #666;
+            margin-top: 0.5rem;
+        }
+
+        .two-column {
+            display: flex;
+            gap: 2rem;
+            margin: 2rem 0;
+        }
+
+        .scenario-box {
+            flex: 1;
+            padding: 1.5rem;
+            border: 1px solid #ddd;
+            background-color: #fafafa;
+        }
+
+        .scenario-box h4 {
+            margin-top: 0;
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 2rem 0;
+            font-size: 0.9rem;
+        }
+
+        th, td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            color: #495057;
+            font-family: 'Crimson Pro', serif;
+        }
+
+        .highlight-box {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 1.5rem;
+            margin: 2rem 0;
+            border-radius: 4px;
+        }
+
+        .recommendation-box {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            padding: 1.5rem;
+            margin: 2rem 0;
+            border-radius: 4px;
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .card {
+            padding: 1.5rem;
+            border: 1px solid #ddd;
+            background-color: #fafafa;
+        }
+
+        ul, ol {
+            margin: 1rem 0 1rem 1.5rem;
+        }
+
+        li {
+            margin-bottom: 0.5rem;
+        }
+
+        strong {
+            font-weight: 600;
+        }
+
+        hr {
+            border: none;
+            border-top: 1px solid #ddd;
+            margin: 2rem 0;
+        }
+
+        /* Code styling */
+        pre {
+            background-color: #2d3748;
+            color: #e2e8f0;
+            padding: 1.5rem;
+            border-radius: 4px;
+            overflow-x: auto;
+            margin: 2rem 0;
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+
+        code {
+            background-color: #2d3748;
+            color: #e2e8f0;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-size: 0.9em;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+            color: inherit;
+        }
+
+        /* Prism override for better integration */
+        .token.comment,
+        .token.prolog,
+        .token.doctype,
+        .token.cdata {
+            color: #718096;
+        }
+
+        .token.punctuation {
+            color: #a0aec0;
+        }
+
+        .token.property,
+        .token.tag,
+        .token.boolean,
+        .token.number,
+        .token.constant,
+        .token.symbol,
+        .token.deleted {
+            color: #f56565;
+        }
+
+        .token.selector,
+        .token.attr-name,
+        .token.string,
+        .token.char,
+        .token.builtin,
+        .token.inserted {
+            color: #68d391;
+        }
+
+        .token.operator,
+        .token.entity,
+        .token.url,
+        .language-css .token.string,
+        .style .token.string {
+            color: #81e6d9;
+        }
+
+        .token.atrule,
+        .token.attr-value,
+        .token.keyword {
+            color: #63b3ed;
+        }
+
+        .token.function,
+        .token.class-name {
+            color: #f6ad55;
+        }
+
+        .token.regex,
+        .token.important,
+        .token.variable {
+            color: #ed8936;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 20px 15px;
+            }
+            
+            h1 {
+                font-size: 2rem;
+            }
+            
+            .two-column {
+                flex-direction: column;
+                gap: 1rem;
+            }
+            
+            .key-metrics {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Analizador de Patrones de Llamadas</h1>
+    
+    <h2>Contexto del Problema</h2>
+    
+    <p>Una empresa de gestión de cobros necesita analizar y visualizar los patrones de interacción con sus clientes. Tu tarea es construir un sistema que procese datos históricos de interacciones, los almacene en un grafo de conocimiento usando Graphiti, y proporcione visualizaciones útiles para identificar patrones y optimizar estrategias de cobro.</p>
+
+    <h2>Requisitos del Sistema</h2>
+
+    <h3>Datos Proporcionados</h3>
+
+    <p>Se te proporciona un archivo <code>interacciones_clientes.json</code> con el siguiente esquema:</p>
+
+    <pre><code class="language-typescript">{
+  "metadata": {
+    "fecha_generacion": string,    // ISO timestamp
+    "total_clientes": number,
+    "total_interacciones": number,
+    "periodo": string
+  },
+  "clientes": [
+    {
+      "id": string,                 // formato: "cliente_XXX"
+      "nombre": string,
+      "telefono": string,
+      "monto_deuda_inicial": number,
+      "fecha_prestamo": string,     // formato: "YYYY-MM-DD"
+      "tipo_deuda": string           // valores: "tarjeta_credito" | "prestamo_personal" | "hipoteca" | "auto"
+    }
+  ],
+  "interacciones": [
+    {
+      "id": string,                  // UUID corto
+      "cliente_id": string,
+      "timestamp": string,           // ISO timestamp con Z
+      "tipo": string,                // valores: "llamada_saliente" | "llamada_entrante" | "email" | "sms" | "pago_recibido"
+      
+      // Campos condicionales según tipo:
+      
+      // Si tipo es llamada_*:
+      "duracion_segundos"?: number,
+      "agente_id"?: string,
+      "resultado"?: string,          // valores: "promesa_pago" | "sin_respuesta" | "renegociacion" | "disputa" | "pago_inmediato" | "se_niega_pagar"
+      "sentimiento"?: string,        // valores: "cooperativo" | "neutral" | "frustrado" | "hostil" | "n/a"
+      
+      // Si resultado es "promesa_pago":
+      "monto_prometido"?: number,
+      "fecha_promesa"?: string,
+      
+      // Si resultado es "renegociacion":
+      "nuevo_plan_pago"?: {
+        "cuotas": number,
+        "monto_mensual": number
+      },
+      
+      // Si tipo es "pago_recibido":
+      "monto"?: number,
+      "metodo_pago"?: string,        // valores: "transferencia" | "tarjeta" | "efectivo"
+      "pago_completo"?: boolean
+    }
+  ]
+}</code></pre>
+
+    <p>El archivo contiene aproximadamente 50 clientes y 500+ interacciones distribuidas a lo largo de 90 días.</p>
+
+    <h3>Entregables Requeridos</h3>
+
+    <h4>1. Sistema de Ingesta y Modelado de Grafo (40% de la evaluación)</h4>
+
+    <p><strong>Objetivo</strong>: Diseñar e implementar la estructura del grafo de conocimiento.</p>
+
+    <p><strong>Requisitos mínimos</strong>:</p>
+    <ul>
+        <li>Procesar el archivo JSON y validar los datos</li>
+        <li>Diseñar una estructura de grafo que capture:
+            <ul>
+                <li>Entidades (clientes, agentes, deudas, pagos)</li>
+                <li>Relaciones temporales entre interacciones</li>
+                <li>Estados y transiciones (promesas → pagos/incumplimientos)</li>
+            </ul>
+        </li>
+        <li>Implementar la carga de datos a Graphiti usando su API REST</li>
+        <li>Documentar las decisiones de modelado tomadas</li>
+    </ul>
+
+    <p><strong>Consideraciones</strong>:</p>
+    <ul>
+        <li>¿Cómo representar la evolución temporal de la deuda?</li>
+        <li>¿Cómo conectar promesas de pago con pagos reales posteriores?</li>
+        <li>¿Qué información derivada vale la pena pre-calcular como propiedades del grafo?</li>
+    </ul>
+
+    <h4>2. API de Consultas (30% de la evaluación)</h4>
+
+    <p><strong>Objetivo</strong>: Crear una interfaz para consultar el grafo de manera eficiente.</p>
+
+    <div class="two-column">
+        <div class="scenario-box">
+            <h4>Opción A - API REST Básica (Mínimo requerido)</h4>
+            <p>Endpoints para consultas comunes:</p>
+            <ul>
+                <li>GET <code>/clientes/{id}/timeline</code> - Historial completo de un cliente</li>
+                <li>GET <code>/agentes/{id}/efectividad</code> - Métricas de desempeño del agente</li>
+                <li>GET <code>/analytics/promesas-incumplidas</code> - Clientes con promesas vencidas</li>
+                <li>GET <code>/analytics/mejores-horarios</code> - Análisis de horarios más efectivos</li>
+            </ul>
+        </div>
+        
+        <div class="scenario-box">
+            <h4>Opción B - Integración MCP + LLM (Bonus significativo)</h4>
+            <p>Utilizar el servidor MCP de Graphiti existente para consultas en lenguaje natural:</p>
+            <ul>
+                <li>Configurar el <a href="https://help.getzep.com/graphiti/getting-started/mcp-server">servidor MCP de Graphiti</a></li>
+                <li>Integrar con un LLM (OpenAI, Anthropic, o local) para interpretar consultas</li>
+            </ul>
+        </div>
+    </div>
+
+
+    <h4>3. Visualización Web (30% de la evaluación)</h4>
+
+    <p><strong>Objetivo</strong>: Crear una interfaz que permita explorar y entender los datos.</p>
+
+    <p><strong>Vistas mínimas requeridas</strong>:</p>
+
+    <div class="highlight-box">
+        <h4>1. Dashboard General</h4>
+        <ul>
+            <li>KPIs principales (tasa de recuperación, promesas cumplidas, etc.)</li>
+            <li>Distribución de tipos de deuda</li>
+            <li>Actividad por período de tiempo</li>
+        </ul>
+
+        <h4>2. Vista de Cliente Individual</h4>
+        <ul>
+            <li>Timeline interactivo de todas las interacciones</li>
+            <li>Estado actual y evolución de la deuda</li>
+            <li>Predicción de comportamiento futuro (si es posible)</li>
+        </ul>
+
+        <h4>3. Vista de Grafo</h4>
+        <ul>
+            <li>Visualización del grafo de relaciones</li>
+            <li>Capacidad de explorar conexiones entre entidades</li>
+            <li>Filtros por tipo de relación, período, resultado</li>
+        </ul>
+    </div>
+
+    <p><strong>Tecnologías sugeridas</strong> (no obligatorias):</p>
+    <ul>
+        <li>Frontend: React, Vue, o vanilla JS</li>
+        <li>Visualización de grafos: D3.js, Cytoscape.js, o Vis.js</li>
+        <li>Gráficos: Chart.js, Recharts, o Plotly</li>
+    </ul>
+
+    <h3>Criterios de Evaluación</h3>
+
+    <div class="grid-3">
+        <div class="card">
+            <h4>1. Calidad del Modelado de Datos</h4>
+            <ul>
+                <li>¿El modelo de grafo captura eficientemente las relaciones importantes?</li>
+                <li>¿Las consultas son eficientes?</li>
+                <li>¿Se aprovechan las capacidades de Graphiti?</li>
+            </ul>
+        </div>
+        
+        <div class="card">
+            <h4>2. Robustez del Código</h4>
+            <ul>
+                <li>Manejo de errores y casos edge</li>
+                <li>Código limpio y mantenible</li>
+                <li>Tests (bonus)</li>
+            </ul>
+        </div>
+        
+        <div class="card">
+            <h4>3. Utilidad de las Consultas/Análisis</h4>
+            <ul>
+                <li>¿Las métricas extraídas son útiles para el negocio?</li>
+                <li>¿Se identifican patrones no obvios?</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="grid-3">
+        <div class="card">
+            <h4>4. Experiencia de Usuario</h4>
+            <ul>
+                <li>¿La visualización es intuitiva y útil?</li>
+                <li>¿La información se presenta de manera clara?</li>
+            </ul>
+        </div>
+        
+        <div class="card">
+            <h4>5. Documentación</h4>
+            <ul>
+                <li>README claro con instrucciones de instalación</li>
+                <li>Documentación de decisiones de diseño</li>
+                <li>Ejemplos de uso</li>
+            </ul>
+        </div>
+        
+        <div class="card">
+            <h4>Bonus (No requerido pero valorado)</h4>
+            <ul>
+                <li>Análisis Predictivo</li>
+                <li>Detección de Anomalías</li>
+                <li>Optimización de Estrategias</li>
+                <li>Tests Automatizados</li>
+                <li>Deployment</li>
+                <li>Integración MCP + LLM</li>
+            </ul>
+        </div>
+    </div>
+
+    <h2>Recursos y Referencias</h2>
+
+    <h3>Documentación Esencial</h3>
+
+    <h4>Graphiti</h4>
+    <ul>
+        <li><a href="https://help.getzep.com/graphiti/getting-started/quick-start">Getting Started with Graphiti</a></li>
+        <li><a href="https://help.getzep.com/v3/graphiti/working-with-data/crud-operations">CRUD Operations</a></li>
+        <li><a href="https://help.getzep.com/v3/graphiti/getting-started/mcp-server">Knowledge Graph MCP Server</a></li>
+    </ul>
+
+        <h4>Model Context Protocol (MCP) - Solo si decides implementar la integración avanzada</h4>
+        <ul>
+            <!--<li><a href="https://modelcontextprotocol.io/docs/quickstart">MCP Quickstart Guide</a></li>
+<li><a href="https://modelcontextprotocol.io/docs/concepts/tools">Building MCP Tools</a></li>
+<li><a href="https://github.com/modelcontextprotocol/python-sdk">MCP Python SDK</a></li>
+<li><a href="https://github.com/modelcontextprotocol/servers">Example MCP Servers</a></li>-->
+            <li><a href="https://github.com/modelcontextprotocol/python-sdk?tab=readme-ov-file#writing-mcp-clients">Writing MCP Clients</a></li>
+        </ul>
+
+    <h4>Visualización de Grafos</h4>
+    <ul>
+        <li><a href="https://observablehq.com/@d3/force-directed-graph">D3.js Force-Directed Graph</a></li>
+        <li><a href="https://js.cytoscape.org/">Cytoscape.js Documentation</a></li>
+        <li><a href="https://neo4j.com/developer/tools-graph-visualization/">Neo4j Visualization Guide</a></li>
+    </ul>
+
+    <h4>Integraciones LLM (si implementas MCP + LLM)</h4>
+    <ul>
+        <li><a href="https://platform.openai.com/docs">OpenAI API Documentation</a></li>
+        <li><a href="https://docs.anthropic.com/">Anthropic API Documentation</a></li>
+        <li><a href="https://ollama.ai/">Ollama (para modelos locales)</a></li>
+    </ul>
+
+    <h3>Configuración Inicial</h3>
+
+    <p><strong>Docker Compose para Graphiti</strong>:</p>
+    <pre><code class="language-yaml">version: '3.8'
+services:
+  neo4j:
+    image: neo4j:5-community
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: neo4j/password123
+      NEO4J_PLUGINS: '["apoc"]'
+    volumes:
+      - neo4j_data:/data
+
+  graphiti:
+    image: getzep/graphiti:latest
+    depends_on:
+      - neo4j
+    ports:
+      - "8000:8000"
+    environment:
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=password123
+
+volumes:
+  neo4j_data:</code></pre>
+
+    <h2>Instrucciones de Entrega</h2>
+
+    <div class="recommendation-box">
+        <h3>1. Repositorio Git</h3>
+        <ul>
+            <li>Código fuente organizado</li>
+            <li><code>.gitignore</code> apropiado</li>
+            <li>No incluir credenciales</li>
+        </ul>
+
+        <h3>2. README.md debe incluir</h3>
+        <ul>
+            <li>Descripción de la solución</li>
+            <li>Instrucciones de instalación paso a paso</li>
+            <li>Cómo ejecutar el proyecto</li>
+            <li>Decisiones técnicas importantes</li>
+            <li>Mejoras futuras identificadas</li>
+        </ul>
+
+        <h3>3. Documentación adicional</h3>
+        <ul>
+            <li>Esquema del modelo de grafo (diagrama o descripción)</li>
+            <li>Lista de endpoints API implementados</li>
+            <li>Screenshots o video demo (opcional pero recomendado)</li>
+        </ul>
+    </div>
+
+    <h2>Consideraciones Importantes</h2>
+
+    <div class="key-metrics">
+        <div class="metric-card">
+            <span class="number">6-8 horas</span>
+            <div class="label">Tiempo Estimado</div>
+        </div>
+        <div class="metric-card">
+            <span class="number">2 días</span>
+            <div class="label">Plazo de Entrega</div>
+        </div>
+        <div class="metric-card">
+            <span class="number">✓</span>
+            <div class="label">Uso de IA Permitido</div>
+        </div>
+        <div class="metric-card">
+            <span class="number">Calidad</span>
+            <div class="label">Sobre Features</div>
+        </div>
+    </div>
+
+    <ul>
+        <li><strong>Uso de IA</strong>: Se permite y alienta el uso de asistentes de IA para desarrollo</li>
+        <li><strong>Evaluación</strong>: Se valorará más una implementación sólida de los requisitos mínimos que features incompletos</li>
+        <li><strong>Preguntas</strong>: Si algo no está claro, documenta tus suposiciones y continúa</li>
+    </ul>
+
+    <h2>Preguntas para Reflexionar</h2>
+
+    <p>Incluye en tu documentación respuestas breves a estas preguntas:</p>
+
+    <div class="highlight-box">
+        <ol>
+            <li>¿Qué ventajas ofrece usar un grafo de conocimiento vs. una base de datos relacional para este problema?</li>
+            <li>¿Cómo escalaría tu solución si tuviéramos 1 millón de clientes?</li>
+            <li>¿Qué otras fuentes de datos serían útiles para mejorar el análisis?</li>
+        </ol>
+    </div>
+
+    <hr>
+
+    <p style="font-size: 0.9rem; color: #666; text-align: center;">
+        <em>Nota: Este ejercicio está diseñado para evaluar tu capacidad de integrar múltiples tecnologías, modelar datos complejos y crear soluciones útiles. No esperamos perfección, sino ver tu proceso de pensamiento y habilidades de resolución de problemas.</em>
+    </p>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+</body>
+</html>

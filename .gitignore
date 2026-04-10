@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# Environment & secrets
+.env
+*.env
+!.env.example
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+uvicorn.log
+
+# Neo4j local data (if running via Docker)
+neo4j_data/
+
+# Claude Code internal files
+.claude/
