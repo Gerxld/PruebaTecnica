@@ -1,73 +1,106 @@
 # Analizador de Patrones de Llamadas
 
-Sistema de inteligencia para empresas de gestión de cobros. Procesa interacciones históricas cliente-agente, las almacena en un grafo de conocimiento, y expone un dashboard web con análisis, timelines, visualización del grafo y un asistente IA conversacional.
+> Plataforma de analytics para cobranza de deudas. Ingiere datos JSON de clientes e interacciones, construye un grafo de conocimiento en memoria (NetworkX) y opcionalmente en disco (Neo4j), y sirve un dashboard React con gráficos, timelines, visualización de grafos y un asistente de chat potenciado por Gemini.
 
 ---
 
-## Arquitectura del Sistema
+## Arquitectura general
 
-```
-┌────────────────────────────────────────────────────────────────┐
-│                        FRONTEND (React + Vite)                 │
-│  LandingPage → Dashboard → ClientTimeline → GraphView → Chat   │
-└─────────────────────────────┬──────────────────────────────────┘
-                              │ HTTP (Vite proxy → localhost:8000)
-┌─────────────────────────────▼──────────────────────────────────┐
-│                     BACKEND (FastAPI)                          │
-│                                                                │
-│  ┌──────────────────┐   ┌──────────────────┐                  │
-│  │  GraphManager    │   │  Neo4jManager    │                  │
-│  │  (NetworkX)      │   │  (neo4j driver)  │                  │
-│  │  In-memory       │   │  Persistent      │                  │
-│  │  Fast analytics  │   │  Graph DB        │                  │
-│  └──────────────────┘   └────────┬─────────┘                  │
-│                                  │ bolt://localhost:7687        │
-│  ┌──────────────────┐   ┌────────▼─────────┐                  │
-│  │  ChatService     │   │  Neo4j Desktop   │                  │
-│  │  (Gemini 2.0)    │   │  (local DB)      │                  │
-│  └──────────────────┘   └──────────────────┘                  │
-└────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph Frontend["Frontend (Vite/React · :5173)"]
+        UI[App.jsx]
+        UI --> D[Dashboard]
+        UI --> C[ClientTimeline]
+        UI --> G[GraphView - Cytoscape.js]
+        UI --> A[AgentView]
+        UI --> CW[ChatWidget]
+    end
+
+    subgraph Backend["Backend (FastAPI · :8000)"]
+        API[main.py]
+        GM[GraphManager<br/>NetworkX DiGraph]
+        PS[PaymentPredictor<br/>LogisticRegression / heurística]
+        AD[AnomalyDetector<br/>4 detectores]
+        CS[ChatService<br/>Gemini 2.5 Flash]
+        MCP[MCPChatService<br/>Gemini + function calling + Cypher]
+        N4J[Neo4jManager]
+    end
+
+    subgraph Stores["Almacenes"]
+        NX[(NetworkX in-memory)]
+        NEO[(Neo4j · bolt://localhost:7687)]
+        FILE[(data/interacciones_clientes.json)]
+    end
+
+    UI -->|"/api/* → proxy Vite"| API
+    API --> GM --> NX
+    API --> N4J --> NEO
+    API --> PS
+    API --> AD
+    API -->|Neo4j disponible| MCP
+    API -->|fallback| CS
+    FILE -->|startup auto-ingest| API
+    API -->|persiste tras /ingest| FILE
 ```
 
-**Capa dual de conocimiento:**
-- **NetworkX** (in-memory): Para todas las consultas analíticas en tiempo real. Sub-milisegundo.
-- **Neo4j** (persistente): Almacenamiento durable del grafo. Permite consultas Cypher y exploración visual desde Neo4j Browser.
+**Capa dual de almacenamiento:**
+- **NetworkX** (in-memory): todas las consultas analíticas y el servicio de predicción y anomalías. Se reconstruye en RAM en cada arranque desde el JSON.
+- **Neo4j** (opcional, persistente): permite consultas Cypher y habilita el modo `MCPChatService` donde el LLM ejecuta Cypher directamente.
 
 ---
 
-## Requisitos
+## Estructura del proyecto
 
-- Python 3.10+
-- Node.js 18+
-- Neo4j Desktop (opcional pero recomendado para persistencia)
-- API Key de Google Gemini (para el chat)
+```
+PruebaTecnica/
+├── backend/
+│   ├── main.py                  # App FastAPI, singletons, todos los endpoints
+│   ├── graph_manager.py         # Grafo NetworkX, ingesta, métricas, consultas
+│   ├── prediction_service.py    # Predicción de pagos (LogisticRegression / heurística)
+│   ├── anomaly_detector.py      # Detección de anomalías (4 detectores)
+│   ├── chat_service.py          # Chat Gemini con contexto serializado
+│   ├── mcp_chat_service.py      # Chat Gemini con function calling sobre Neo4j
+│   ├── neo4j_manager.py         # Persistencia y consultas Cypher en Neo4j
+│   ├── requirements.txt
+│   └── .env                     # Variables de entorno (no incluir en control de versiones)
+├── frontend/
+│   ├── src/
+│   │   ├── App.jsx              # Raíz: LandingPage → layout con 4 tabs
+│   │   ├── services/api.js      # Todas las llamadas axios (baseURL: /api)
+│   │   └── components/
+│   │       ├── Dashboard.jsx    # KPIs y gráficos Chart.js
+│   │       ├── ClientTimeline.jsx
+│   │       ├── GraphView.jsx    # Cytoscape.js + fcose layout
+│   │       ├── AgentView.jsx
+│   │       ├── ChatWidget.jsx   # Panel flotante de chat
+│   │       ├── LandingPage.jsx  # Upload inicial del JSON
+│   │       └── ThemeToggle.jsx
+│   └── vite.config.js           # Proxy /api/* → localhost:8000
+├── data/
+│   └── interacciones_clientes.json   # Persistido tras el primer ingest
+├── start_backend.bat
+└── start_frontend.bat
+```
 
 ---
 
 ## Instalación
 
-### 1. Clonar el repositorio
+### Requisitos previos
 
-```bash
-git clone <url-del-repo>
-cd PruebaTecnica
-```
+- Python 3.10+
+- Node.js 18+
+- (Opcional) Neo4j Desktop o Neo4j Community
 
-### 2. Configurar variables de entorno
-
-```bash
-cp .env.example backend/.env
-# Edita backend/.env con tu API key de Gemini y contraseña de Neo4j
-```
-
-### 3. Instalar dependencias del backend
+### Backend
 
 ```bash
 cd backend
 pip install -r requirements.txt
 ```
 
-### 4. Instalar dependencias del frontend
+### Frontend
 
 ```bash
 cd frontend
@@ -76,202 +109,252 @@ npm install
 
 ---
 
-## Configurar Neo4j Desktop (recomendado)
+## Variables de entorno
 
-1. Descarga e instala [Neo4j Desktop](https://neo4j.com/download/)
-2. Abre Neo4j Desktop → **New Project** → **Add** → **Local DBMS**
-3. Asigna un nombre y una contraseña (por defecto: `password`)
-4. Haz clic en **Start** para iniciar la base de datos
-5. Actualiza `NEO4J_PASSWORD` en `backend/.env` con la contraseña que elegiste
+Archivo: `backend/.env`
 
-> Si no configuras Neo4j, el sistema funciona en modo solo-NetworkX (in-memory). Los datos se persisten en `data/interacciones_clientes.json`.
+| Variable | Requerida | Descripción |
+|---|---|---|
+| `GEMINI_API_KEY` | Sí | Clave de API de Google Gemini. Sin ella, `/chat` no funciona |
+| `NEO4J_URI` | No | URI del servidor Neo4j (default: `bolt://localhost:7687`) |
+| `NEO4J_USER` | No | Usuario Neo4j (default: `neo4j`) |
+| `NEO4J_PASSWORD` | No | Contraseña Neo4j. Si está vacía, el sistema opera solo con NetworkX y `MCPChatService` no se activa |
+
+Ejemplo de contenido:
+
+```
+GEMINI_API_KEY=AIzaSy...
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=miPassword
+```
 
 ---
 
-## Ejecutar el Proyecto
+## Ejecución
 
-**Opción A — Scripts de inicio (Windows)**
+### Con scripts `.bat` (Windows)
 
-```bash
-# Terminal 1
-start_backend.bat
-
-# Terminal 2
-start_frontend.bat
+```
+start_backend.bat      # Terminal 1
+start_frontend.bat     # Terminal 2
 ```
 
-**Opción B — Manual**
+### Manual
 
 ```bash
-# Terminal 1: Backend
+# Terminal 1 — backend
 cd backend
 uvicorn main:app --reload --port 8000
 
-# Terminal 2: Frontend
+# Terminal 2 — frontend
 cd frontend
 npm run dev
 ```
 
-Abre el navegador en **http://localhost:5173**
+La aplicación queda disponible en `http://localhost:5173`.  
+Documentación interactiva de la API: `http://localhost:8000/docs`
 
 ---
 
-## Flujo de uso
+## Flujo de datos
 
-1. Sube el archivo `data/interacciones_clientes.json` desde la pantalla de inicio
-2. El sistema carga y analiza ~50 clientes y 500+ interacciones
-3. Explora las 4 vistas: Dashboard, Clientes, Grafo, Agentes
-4. Usa el chat (botón `>_`) para consultas en lenguaje natural
+```
+Archivo JSON  ──►  POST /ingest  ──►  GraphManager.reset() + ingest()
+                                          │
+                          ┌───────────────┼───────────────┐
+                          ▼               ▼               ▼
+                  _compute_promise  _compute_client  _compute_agent
+                  _fulfillment()    _metrics()       _metrics()
+                                          │
+                          ┌───────────────┼
+                          ▼               ▼
+                  PaymentPredictor  Neo4jManager.ingest()
+                  .train(gm)        (si conectado)
+```
 
----
-
-## API Endpoints
-
-| Método | Ruta | Descripción |
-|--------|------|-------------|
-| GET | `/` | Health check + estado de Neo4j |
-| POST | `/ingest` | Carga datos JSON al sistema |
-| POST | `/chat` | Consulta al asistente Gemini |
-| GET | `/clientes` | Lista todos los clientes |
-| GET | `/clientes/{id}` | Cliente por ID |
-| GET | `/clientes/{id}/timeline` | Timeline completo del cliente |
-| GET | `/agentes` | Lista todos los agentes |
-| GET | `/agentes/{id}/efectividad` | Métricas de desempeño del agente |
-| GET | `/analytics/dashboard` | KPIs generales del sistema |
-| GET | `/analytics/promesas-incumplidas` | Promesas vencidas sin cumplir |
-| GET | `/analytics/mejores-horarios` | Análisis de efectividad por hora |
-| GET | `/graph/data` | Datos del grafo para Cytoscape.js |
-
-Documentación interactiva: http://localhost:8000/docs
+Al arrancar el servidor, si `data/interacciones_clientes.json` existe y contiene datos válidos, el backend ejecuta automáticamente este flujo sin necesidad de un `POST /ingest`.
 
 ---
 
-## Modelo del Grafo de Conocimiento
+## Formato de datos de entrada
+
+```json
+{
+  "clientes": [
+    {
+      "id": "CLI-001",
+      "nombre": "Juan Pérez",
+      "telefono": "507-6000-0001",
+      "monto_deuda_inicial": 1500.00,
+      "fecha_prestamo": "2024-01-15",
+      "tipo_deuda": "personal"
+    }
+  ],
+  "interacciones": [
+    {
+      "id": "INT-001",
+      "cliente_id": "CLI-001",
+      "tipo": "llamada_saliente",
+      "timestamp": "2025-07-01T09:30:00Z",
+      "agente_id": "AGT-01",
+      "duracion_segundos": 120,
+      "resultado": "promesa_pago",
+      "sentimiento": "neutral",
+      "monto_prometido": 300.00,
+      "fecha_promesa": "2025-07-15"
+    }
+  ]
+}
+```
+
+### Valores de `tipo` de interacción
+
+| Valor | Descripción |
+|---|---|
+| `llamada_saliente` | Llamada originada por el agente |
+| `llamada_entrante` | Llamada recibida del cliente |
+| `pago_recibido` | Registro de pago (requiere `monto`, `metodo_pago`, `pago_completo`) |
+| `email` | Contacto por correo electrónico |
+| `sms` | Contacto por mensaje de texto |
+
+### Valores de `resultado` (solo llamadas)
+
+| Valor | Efecto en el sistema |
+|---|---|
+| `pago_inmediato` | +5 al risk score del cliente |
+| `promesa_pago` | Crea nodo `PromesaPago` (requiere `monto_prometido`, `fecha_promesa`) |
+| `renegociacion` | Crea nodo `Interaccion` con campos `cuotas` y `monto_mensual` si hay `nuevo_plan_pago` |
+| `se_niega_pagar` | −8 al risk score |
+| `disputa` | −5 al risk score |
+| `sin_respuesta` | Sin ajuste al risk score |
+
+### Valores de `sentimiento` (solo llamadas)
+
+`positivo`, `neutral`, `hostil`  
+Más de 2 interacciones `hostil` restan −10 al risk score del cliente.
+
+---
+
+## Modelo del grafo de conocimiento
 
 ### Nodos
 
-| Etiqueta | Propiedades clave |
-|----------|-------------------|
-| `Cliente` | id, nombre, telefono, monto_deuda_inicial, tipo_deuda, risk_score, estado |
-| `Agente` | id, total_contactos, pagos_inmediatos, promesas_generadas, tasa_exito |
-| `Deuda` | id, monto_inicial, tipo, fecha_prestamo |
-| `Interaccion` | id, timestamp, tipo, resultado, sentimiento, duracion_segundos |
-| `Pago` | id, timestamp, monto, metodo_pago, pago_completo |
-| `PromesaPago` | id, monto_prometido, fecha_promesa, cumplida, vencida |
-| `Contacto` | id, timestamp, tipo (email/sms) |
+| Tipo | Propiedades clave |
+|---|---|
+| `cliente` | `id`, `nombre`, `telefono`, `monto_deuda_inicial`, `tipo_deuda`, `risk_score`, `estado`, `total_pagado`, `monto_pendiente`, `tasa_recuperacion` |
+| `agente` | `id`, `total_contactos`, `pagos_inmediatos`, `promesas_generadas`, `renegociaciones`, `se_niega`, `disputas`, `sin_respuesta` |
+| `deuda` | `monto_inicial`, `tipo`, `fecha_prestamo` |
+| `interaccion` | `id`, `tipo`, `timestamp`, `resultado`, `sentimiento`, `duracion_segundos`, `agente_id` |
+| `pago` | `id`, `monto`, `timestamp`, `metodo_pago`, `pago_completo` |
+| `promesa` | `id`, `monto_prometido`, `fecha_promesa`, `cumplida`, `vencida` |
+| `contacto` | `id`, `tipo` (`email`/`sms`), `timestamp` |
 
 ### Relaciones
 
 ```
-(Cliente)-[:TIENE_DEUDA]→(Deuda)
-(Cliente)-[:TUVO_INTERACCION]→(Interaccion)
-(Cliente)-[:REALIZA]→(Pago)
-(Cliente)-[:PROMETE]→(PromesaPago)
-(Interaccion)-[:ATENDIDA_POR]→(Agente)
-(Interaccion)-[:GENERA]→(PromesaPago)
-(PromesaPago)-[:SE_CUMPLE_CON]→(Pago)
-(Cliente)-[:TUVO_CONTACTO]→(Contacto)
+(cliente)     -[:TIENE_DEUDA]--------► (deuda)
+(cliente)     -[:TUVO_INTERACCION]--► (interaccion)
+(cliente)     -[:REALIZA]-----------► (pago)
+(cliente)     -[:PROMETE]----------► (promesa)
+(cliente)     -[:TUVO_CONTACTO]----► (contacto)
+(interaccion) -[:ATENDIDA_POR]-----► (agente)
+(interaccion) -[:GENERA]------------► (promesa)
+(promesa)     -[:SE_CUMPLE_CON]----► (pago)
 ```
 
-### Diagrama simplificado
+### Risk score (0–100)
 
-```
-Cliente ──TIENE_DEUDA──► Deuda
-   │
-   ├──TUVO_INTERACCION──► Interaccion ──ATENDIDA_POR──► Agente
-   │                           │
-   │                           └──GENERA──► PromesaPago ──SE_CUMPLE_CON──► Pago
-   │
-   ├──REALIZA──► Pago
-   ├──PROMETE──► PromesaPago
-   └──TUVO_CONTACTO──► Contacto (email/sms)
-```
+Base 50, calculado una sola vez en `_compute_client_metrics()` durante la ingesta:
 
-### Métricas calculadas en tiempo de ingesta
+| Evento | Ajuste |
+|---|---|
+| Pago inmediato | +5 por cada uno |
+| Negativa a pagar | −8 por cada una |
+| Disputa | −5 por cada una |
+| Tasa de promesas cumplidas | `(cumplidas/hechas) * 20 − 10` |
+| Recuperación total | `(pagado/deuda_inicial) * 15` (máx. 1.0) |
+| >2 interacciones hostiles | −10 |
 
-**Risk Score (0–100):** Indicador de probabilidad de pago.
-- Base: 50
-- +5 por pago inmediato
-- −8 por negativa a pagar
-- −5 por disputa
-- ±10 según tasa de cumplimiento de promesas
-- +15 escalado por recuperación total
-- −10 si >2 interacciones hostiles
-
-**Estado del cliente:** `sin_contacto` → `contactado` → `promesa_activa` / `en_renegociacion` / `rehusa_pagar` / `en_disputa` / `pago_parcial` / `pago_completo`
+Clasificación de riesgo: `alto` < 35 · `medio` 35–64 · `bajo` >= 65
 
 ---
 
-## Tecnologías Utilizadas
+## Endpoints REST
 
-| Capa | Tecnología |
-|------|------------|
-| Backend API | FastAPI + Uvicorn |
-| Grafo en memoria | NetworkX DiGraph |
-| Grafo persistente | Neo4j Desktop + neo4j Python driver |
-| LLM / Chat | Google Gemini 2.0 Flash |
-| Frontend | React 18 + Vite 5 |
-| Visualización gráfica | Cytoscape.js + fcose layout |
-| Gráficos | Chart.js + react-chartjs-2 |
-| Animaciones | Framer Motion |
+### Salud
 
----
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/` | Estado del servidor, conteos cargados y estadísticas de Neo4j |
 
-## Decisiones Técnicas Importantes
+### Datos
 
-### 1. NetworkX + Neo4j en lugar de graphiti-core puro
+| Método | Ruta | Descripción |
+|---|---|---|
+| `POST` | `/ingest` | Recibe JSON con `clientes` e `interacciones`, persiste en disco y reconstruye ambos grafos |
 
-Graphiti es un framework de knowledge graph diseñado para datos **no estructurados** (texto libre), que usa LLMs para extraer entidades y relaciones automáticamente. Para este proyecto, los datos ya vienen estructurados como JSON tipado.
+### Chat
 
-Decisión: usar **NetworkX** para analytics en memoria (velocidad sub-ms) y el **driver oficial de Neo4j** para persistencia del grafo. Esto evita ~500 llamadas LLM durante la ingesta, reduce la latencia de startup de ~30 segundos a <1 segundo, y produce un grafo más preciso al tener control directo sobre el schema.
+| Método | Ruta | Body | Descripción |
+|---|---|---|---|
+| `POST` | `/chat` | `{ "message": "...", "history": [] }` | Consulta en lenguaje natural. Retorna `source: "mcp_cypher"` o `"context_serialized"` según el servicio activo |
 
-### 2. Arquitectura dual (in-memory + persistente)
+### Clientes
 
-El grafo NetworkX se reconstruye en RAM en cada startup desde el JSON. Neo4j sirve como store persistente y permite exploración visual desde Neo4j Browser (`http://localhost:7474`).
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/clientes` | Lista todos los clientes con métricas calculadas |
+| `GET` | `/clientes/{id}` | Datos de un cliente |
+| `GET` | `/clientes/{id}/timeline` | Eventos, pagos, promesas y evolución de deuda del cliente |
+| `GET` | `/clientes/{id}/prediccion` | Probabilidad de pago en los próximos 7 días |
 
-### 3. Vite proxy para comunicación frontend-backend
+### Agentes
 
-El frontend usa rutas relativas (`/api/*`) que el dev server de Vite proxea a `localhost:8000`. Esto evita problemas de CORS y simplifica el deployment.
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/agentes` | Lista todos los agentes ordenados por `total_contactos` |
+| `GET` | `/agentes/{id}/efectividad` | Métricas detalladas: actividad por día, desglose de resultados |
 
-### 4. Risk Score como propiedad derivada
+### Analytics
 
-El risk score se calcula en tiempo de ingesta (no en cada consulta) y se almacena como propiedad del nodo `Cliente`. Esto permite filtrarlo y ordenarlo en Cypher sin recalcular.
+| Método | Ruta | Params opcionales | Descripción |
+|---|---|---|---|
+| `GET` | `/analytics/dashboard` | — | KPIs globales: recuperación, riesgo, actividad por día |
+| `GET` | `/analytics/promesas-incumplidas` | — | Promesas vencidas y no cumplidas |
+| `GET` | `/analytics/mejores-horarios` | — | Tasa de éxito por hora del día |
+| `GET` | `/analytics/anomalias` | `tipo`, `umbral_promesas_rotas` (default 3), `dias_inactividad` (default 7), `umbral_disputas_factor` (default 3.0) | Anomalías detectadas |
 
----
+### Grafo
 
-## Preguntas de Reflexión
-
-### 1. ¿Qué ventajas ofrece un grafo de conocimiento vs. una base de datos relacional para este problema?
-
-Un grafo captura las **relaciones como ciudadanos de primera clase**. En SQL, para encontrar "todos los clientes que hicieron una promesa, no la cumplieron, y luego recibieron otra llamada del mismo agente", necesitarías 4-5 JOINs con subconsultas correlacionadas. En Cypher: `MATCH (c)-[:PROMETE]->(pr {cumplida:false})<-[:GENERA]-(:Interaccion)-[:ATENDIDA_POR]->(a)<-[:ATENDIDA_POR]-(:Interaccion)-[:TUVO_INTERACCION]-(c)`.
-
-Además, el grafo modela naturalmente la **evolución temporal** (cadenas de interacciones → promesas → pagos o incumplimientos), lo que es el corazón de este dominio.
-
-### 2. ¿Cómo escalaría tu solución si tuviéramos 1 millón de clientes?
-
-- **Neo4j cluster** (Causal Clustering) para lectura distribuida
-- Eliminar el grafo NetworkX in-memory; migrar todas las consultas a Cypher optimizado con índices de propiedad (`id`, `timestamp`, `tipo_deuda`)
-- **Procesamiento batch** de la ingesta usando la API de Neo4j Bulk Import (`neo4j-admin database import`)
-- Cachear los KPIs del dashboard (Redis / TTL de 5 minutos), ya que no cambian en tiempo real
-- Separar el servicio de chat (async workers) del API de consultas
-- Calcular el risk score como job programado (Celery/APScheduler) en lugar de en cada ingesta
-
-### 3. ¿Qué otras fuentes de datos serían útiles para mejorar el análisis?
-
-- **Historial crediticio externo** (buros de crédito): enriquecería el risk score con datos previos al préstamo
-- **Datos macroeconómicos** (tasa de desempleo, inflación por período): correla impagos con contexto económico
-- **Gravaciones y transcripciones de llamadas** (Speech-to-Text): análisis de sentimiento más preciso que el campo `sentimiento` manual
-- **Datos de WhatsApp/redes sociales**: muchos cobros se negocian por mensajería instantánea fuera del sistema
-- **Calendario**: festivos, quincenas, fecha de cobro de nómina — impactan directamente la tasa de pago ese día
+| Método | Ruta | Params opcionales | Descripción |
+|---|---|---|---|
+| `GET` | `/graph/data` | `cliente_id`, `agente_id` | Nodos y aristas en formato Cytoscape.js. Con `cliente_id` retorna ego-grafo de radio 2. Sin parámetros retorna solo clientes y agentes con aristas de peso |
 
 ---
 
-## Mejoras Futuras Identificadas
+## Dependencias
 
-1. **Integración MCP + LLM sobre Neo4j**: Usar el servidor MCP de Graphiti para permitir consultas Cypher generadas por LLM desde el chat
-2. **Análisis predictivo**: Modelo ML que prediga probabilidad de pago en los próximos 7 días basado en risk score + historial
-3. **Detección de anomalías**: Identificar patrones inusuales (agente con tasa de disputas 3x el promedio, cliente con 10 promesas rotas consecutivas)
-4. **Autenticación**: Roles por agente/supervisor con vistas filtradas
-5. **Exportación**: Descarga de reportes en CSV/PDF desde el dashboard
-6. **WebSockets**: Push en tiempo real cuando llegan nuevas interacciones
-7. **Tests automatizados**: Pytest para los endpoints + Vitest para componentes React
+### Backend (`backend/requirements.txt`)
+
+| Paquete | Versión | Uso |
+|---|---|---|
+| `fastapi` | 0.115.0 | Framework HTTP |
+| `uvicorn[standard]` | 0.30.0 | Servidor ASGI |
+| `networkx` | 3.3 | Grafo en memoria |
+| `pydantic` | 2.7.0 | Validación de modelos de entrada |
+| `google-genai` | >=1.0.0 | SDK de Gemini (ChatService y MCPChatService) |
+| `python-dotenv` | >=1.0.0 | Carga de variables de entorno desde `.env` |
+| `neo4j` | >=5.20.0 | Driver async para Neo4j (opcional) |
+| `scikit-learn` | >=1.4.0 | `LogisticRegression` para predicción de pagos |
+| `python-multipart` | 0.0.9 | Soporte de formularios en FastAPI |
+
+### Frontend
+
+| Paquete | Uso |
+|---|---|
+| React 18 + Vite 5 | Framework UI y build tool |
+| Chart.js | Gráficos en Dashboard |
+| Cytoscape.js + cytoscape-fcose | Visualización del grafo con layout fcose |
+| framer-motion | Animaciones de transición entre tabs (`AnimatePresence`) |
+| axios | Llamadas HTTP al backend |

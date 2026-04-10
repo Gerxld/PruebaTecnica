@@ -14,14 +14,20 @@ ChartJS.register(
   Title, Tooltip, Legend, Filler,
 )
 
-const chartBase = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: { legend: { labels: { color: '#94a3b8', font: { size: 11 } } } },
-  scales: {
-    x: { ticks: { color: '#64748b' }, grid: { color: '#1e293b' } },
-    y: { ticks: { color: '#64748b' }, grid: { color: '#1e293b' } },
-  },
+function cssVar(v) {
+  return getComputedStyle(document.documentElement).getPropertyValue(v).trim()
+}
+
+function getChartBase() {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { labels: { color: cssVar('--text-muted'), font: { size: 11 } } } },
+    scales: {
+      x: { ticks: { color: cssVar('--text-muted') }, grid: { color: cssVar('--border') } },
+      y: { ticks: { color: cssVar('--text-muted') }, grid: { color: cssVar('--border') } },
+    },
+  }
 }
 
 function ScoreBar({ value, max, color }) {
@@ -138,13 +144,13 @@ export default function AgentView() {
         <div className="card">
           <div className="card-title">Resultados por agente</div>
           <div style={{ height: 250 }}>
-            <Bar data={compChart} options={{ ...chartBase, plugins: { legend: { labels: { color: '#94a3b8', font: { size: 10 } } } } }} />
+            <Bar data={compChart} options={{ ...getChartBase(), plugins: { legend: { labels: { color: cssVar('--text-muted'), font: { size: 10 } } } } }} />
           </div>
         </div>
         <div className="card">
           <div className="card-title">Tasa de éxito (%)</div>
           <div style={{ height: 250 }}>
-            <Bar data={tasaChart} options={{ ...chartBase, plugins: { legend: { display: false } } }} />
+            <Bar data={tasaChart} options={{ ...getChartBase(), plugins: { legend: { display: false } } }} />
           </div>
         </div>
       </div>
@@ -218,9 +224,9 @@ export default function AgentView() {
                   plugins: { legend: { display: false } },
                   scales: {
                     r: {
-                      ticks: { color: '#64748b', backdropColor: 'transparent' },
-                      grid: { color: '#334155' },
-                      pointLabels: { color: '#94a3b8', font: { size: 10 } },
+                      ticks: { color: cssVar('--text-muted'), backdropColor: 'transparent' },
+                      grid: { color: cssVar('--border') },
+                      pointLabels: { color: cssVar('--text-muted'), font: { size: 10 } },
                     },
                   },
                 }} />
@@ -232,7 +238,7 @@ export default function AgentView() {
                 <div className="card-title">Actividad diaria (llamadas por día)</div>
                 <div style={{ height: 260 }}>
                   <Line data={actChart} options={{
-                    ...chartBase,
+                    ...getChartBase(),
                     plugins: { legend: { display: false } },
                     scales: {
                       x: { ticks: { color: '#64748b', maxTicksLimit: 8 }, grid: { color: '#1e293b' } },

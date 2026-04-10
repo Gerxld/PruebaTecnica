@@ -17,6 +17,61 @@ const ESTADO_BADGE = {
   contactado:       'badge-blue',
 }
 
+function getCytoscapeTheme(isDark, clienteId) {
+  const textColor    = isDark ? '#e2e8f0' : '#1a1a1a'
+  const outlineColor = isDark ? '#0f172a' : '#ffffff'
+  const edgeColor    = isDark ? '#334155' : '#cbd5e1'
+  const edgeLblColor = isDark ? '#64748b' : '#94a3b8'
+  return [
+    {
+      selector: 'node',
+      style: {
+        'background-color': 'data(color)',
+        label: 'data(label)',
+        color: textColor,
+        'font-size': clienteId ? 10 : 8,
+        'text-valign': 'bottom',
+        'text-margin-y': 4,
+        'text-outline-color': outlineColor,
+        'text-outline-width': 2,
+        width: 28, height: 28,
+      },
+    },
+    { selector: 'node[type="cliente"]', style: { width: 32, height: 32 } },
+    { selector: 'node[type="agente"]',  style: { shape: 'diamond', width: 36, height: 36 } },
+    { selector: 'node[type="pago"]',    style: { shape: 'round-rectangle', width: 24, height: 24 } },
+    { selector: 'node[type="promesa"]', style: { shape: 'star', width: 28, height: 28 } },
+    {
+      selector: 'edge',
+      style: {
+        width: 1.5,
+        'line-color': edgeColor,
+        'target-arrow-color': edgeColor,
+        'target-arrow-shape': 'triangle',
+        'curve-style': 'bezier',
+        'arrow-scale': 0.7,
+        label: clienteId ? 'data(label)' : '',
+        color: edgeLblColor,
+        'font-size': 8,
+        'text-rotation': 'autorotate',
+      },
+    },
+    {
+      selector: 'edge[weight]',
+      style: {
+        width: (ele) => Math.min(1 + (ele.data('weight') || 1) * 0.4, 6),
+        label: 'data(label)',
+        color: edgeLblColor,
+        'font-size': 8,
+      },
+    },
+    {
+      selector: ':selected',
+      style: { 'border-width': 3, 'border-color': '#f59e0b', 'background-color': '#f59e0b' },
+    },
+  ]
+}
+
 export default function GraphView() {
   const cyRef    = useRef(null)
   const cyInst   = useRef(null)
@@ -42,74 +97,11 @@ export default function GraphView() {
 
         setStats({ nodes: nodes.length, edges: edges.length })
 
+        const isDark = document.documentElement.classList.contains('dark')
         const cy = cytoscape({
           container: cyRef.current,
           elements: [...nodes, ...edges],
-          style: [
-            {
-              selector: 'node',
-              style: {
-                'background-color': 'data(color)',
-                label: 'data(label)',
-                color: '#e2e8f0',
-                'font-size': clienteId ? 10 : 8,
-                'text-valign': 'bottom',
-                'text-margin-y': 4,
-                'text-outline-color': '#0f172a',
-                'text-outline-width': 2,
-                width: 28,
-                height: 28,
-              },
-            },
-            {
-              selector: 'node[type="cliente"]',
-              style: { width: 32, height: 32 },
-            },
-            {
-              selector: 'node[type="agente"]',
-              style: { shape: 'diamond', width: 36, height: 36 },
-            },
-            {
-              selector: 'node[type="pago"]',
-              style: { shape: 'round-rectangle', width: 24, height: 24 },
-            },
-            {
-              selector: 'node[type="promesa"]',
-              style: { shape: 'star', width: 28, height: 28 },
-            },
-            {
-              selector: 'edge',
-              style: {
-                width: 1.5,
-                'line-color': '#334155',
-                'target-arrow-color': '#334155',
-                'target-arrow-shape': 'triangle',
-                'curve-style': 'bezier',
-                'arrow-scale': 0.7,
-                label: clienteId ? 'data(label)' : '',
-                color: '#64748b',
-                'font-size': 8,
-                'text-rotation': 'autorotate',
-              },
-            },
-            {
-              selector: 'edge[weight]',
-              style: {
-                width: (ele) => Math.min(1 + (ele.data('weight') || 1) * 0.4, 6),
-                label: 'data(label)',
-                color: '#64748b',
-                'font-size': 8,
-              },
-            },
-            {
-              selector: ':selected',
-              style: {
-                'border-width': 3,
-                'border-color': '#f59e0b',
-                'background-color': '#f59e0b',
-              },
-            },
-          ],
+          style: getCytoscapeTheme(isDark, clienteId),
           layout: {
             name: 'fcose',
             animate: true,

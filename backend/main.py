@@ -14,7 +14,10 @@ from pydantic import BaseModel
 
 from graph_manager import GraphManager
 from chat_service import ChatService
+from mcp_chat_service import MCPChatService
 from neo4j_manager import Neo4jManager
+from prediction_service import PaymentPredictor
+from anomaly_detector import AnomalyDetector
 
 # Carga variables de entorno desde backend/.env
 load_dotenv(Path(__file__).parent / ".env")
@@ -39,19 +42,35 @@ app.add_middleware(
 
 gm = GraphManager()
 neo4j_gm = Neo4jManager()
+predictor = PaymentPredictor()
+anomaly_det = AnomalyDetector()
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 if not GEMINI_API_KEY:
     print("[WARN] GEMINI_API_KEY no configurada — el chat no funcionará")
 chat_service = ChatService(GEMINI_API_KEY)
+mcp_chat: Optional[MCPChatService] = None  # se inicializa en startup si Neo4j disponible
 
 DATA_PATH = Path(__file__).parent.parent / "data" / "interacciones_clientes.json"
 
 
 @app.on_event("startup")
 async def startup_event():
+    global mcp_chat
     # Conectar a Neo4j (opcional — el sistema funciona sin él)
     await neo4j_gm.connect()
+
+    # Inicializar MCPChatService si Neo4j está disponible
+    try:
+        _mcp = MCPChatService(api_key=GEMINI_API_KEY)
+        await _mcp.connect_neo4j()
+        if _mcp.neo4j_available:
+            mcp_chat = _mcp
+            print("[MCP] MCPChatService activo — consultas Cypher dinámicas habilitadas")
+        else:
+            print("[MCP] Neo4j no disponible — usando ChatService estándar")
+    except Exception as e:
+        print(f"[MCP] Fallback a ChatService estándar: {e}")
 
     if not DATA_PATH.exists():
         print(f"[WARN] Data file not found at {DATA_PATH}")
@@ -60,6 +79,7 @@ async def startup_event():
         data = json.load(f)
     if data.get("clientes") and data.get("interacciones"):
         gm.ingest(data)
+        predictor.train(gm)
         print(
             f"[OK] NetworkX graph loaded: {len(gm.clients)} clients, "
             f"{len(gm.agents)} agents, {len(gm.interactions)} call interactions"
@@ -74,6 +94,8 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     await neo4j_gm.close()
+    if mcp_chat:
+        await mcp_chat.close()
 
 
 # ------------------------------------------------------------------ #
@@ -120,6 +142,7 @@ async def ingest_data(request: Request):
     # Re-ingest NetworkX (in-memory, fast analytics)
     gm.reset()
     gm.ingest(body)
+    predictor.train(gm)
 
     # Re-ingest Neo4j (persistent graph store)
     neo4j_status = "not_connected"
@@ -158,15 +181,18 @@ async def chat_endpoint(req: ChatRequest):
         raise HTTPException(400, "No data loaded. Please upload data first.")
 
     dashboard = gm.get_dashboard_data()
-    agents = gm.get_all_agents()
-    clients = gm.get_all_clients()
-    promises = gm.get_unfulfilled_promises()
+    agents    = gm.get_all_agents()
+    clients   = gm.get_all_clients()
+    promises  = gm.get_unfulfilled_promises()
+    history   = [{"role": m.role, "content": m.content} for m in req.history]
 
-    context = chat_service.build_context(dashboard, agents, clients, promises)
-    history = [{"role": m.role, "content": m.content} for m in req.history]
+    # Usar MCP si disponible, fallback a ChatService estándar
+    active_service = mcp_chat if mcp_chat else chat_service
+    context = active_service.build_context(dashboard, agents, clients, promises)
+    response = await active_service.chat(req.message, context, history)
 
-    response = await chat_service.chat(req.message, context, history)
-    return {"response": response}
+    source = "mcp_cypher" if (mcp_chat and active_service is mcp_chat) else "context_serialized"
+    return {"response": response, "source": source}
 
 
 # ------------------------------------------------------------------ #
@@ -193,6 +219,14 @@ def client_timeline(cliente_id: str):
     if result is None:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
     return result
+
+
+@app.get("/clientes/{cliente_id}/prediccion", tags=["Clientes"])
+def get_prediccion(cliente_id: str):
+    """Retorna la predicción de probabilidad de pago en los próximos 7 días para un cliente."""
+    if cliente_id not in gm.clients:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    return predictor.predict(cliente_id)
 
 
 # ------------------------------------------------------------------ #
@@ -231,6 +265,36 @@ def unfulfilled_promises():
 @app.get("/analytics/mejores-horarios", tags=["Analytics"])
 def best_hours():
     return gm.get_best_hours()
+
+
+@app.get("/analytics/anomalias", tags=["Analytics"])
+def get_anomalias(
+    tipo: Optional[str] = None,
+    umbral_promesas_rotas: int = 3,
+    dias_inactividad: int = 7,
+    umbral_disputas_factor: float = 3.0,
+):
+    """
+    Detecta anomalías en el grafo: agentes con disputas altas, clientes con
+    promesas rotas, agentes inactivos y clientes con pagos decrecientes.
+    """
+    anomalias = anomaly_det.detect(
+        gm,
+        factor=umbral_disputas_factor,
+        threshold=umbral_promesas_rotas,
+        days=dias_inactividad,
+    )
+    if tipo:
+        anomalias = [a for a in anomalias if a["tipo"] == tipo]
+    return {
+        "total_anomalias": len(anomalias),
+        "anomalias": anomalias,
+        "configuracion": {
+            "umbral_promesas_rotas": umbral_promesas_rotas,
+            "dias_inactividad": dias_inactividad,
+            "umbral_disputas_factor": umbral_disputas_factor,
+        },
+    }
 
 
 # ------------------------------------------------------------------ #

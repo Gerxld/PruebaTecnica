@@ -157,8 +157,12 @@ Deuda por tipo:
             err_str = str(e)
             if "RESOURCE_EXHAUSTED" in err_str or "429" in err_str:
                 return (
-                    "Error: Cuota de la API de Gemini agotada. "
-                    "Por favor espera unos minutos antes de volver a intentarlo, "
-                    "o verifica tu plan en https://ai.dev/rate-limit."
+                    "La API de Gemini ha alcanzado su límite de solicitudes. "
+                    "Por favor espera unos minutos e intenta de nuevo."
                 )
-            return f"Error al procesar la consulta: {err_str}"
+            if "UNAVAILABLE" in err_str or "503" in err_str:
+                return (
+                    "Los servidores de Gemini están con alta demanda en este momento. "
+                    "Esto es temporal — intenta de nuevo en unos segundos."
+                )
+            return "Ocurrió un error al procesar tu consulta. Por favor intenta de nuevo."

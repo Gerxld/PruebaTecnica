@@ -28,3 +28,7 @@ export const getAgentEff   = (id)         => api.get(`/agentes/${id}/efectividad
 
 /* Graph */
 export const getGraphData  = (params={})  => api.get('/graph/data', { params }).then(r => r.data)
+
+/* Prediction & Anomalies */
+export const getPrediccion = (id)         => api.get(`/clientes/${id}/prediccion`).then(r => r.data)
+export const getAnomalias  = (params={})  => api.get('/analytics/anomalias', { params }).then(r => r.data)

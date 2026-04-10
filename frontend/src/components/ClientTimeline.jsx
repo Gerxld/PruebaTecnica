@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react'
+import { motion } from 'framer-motion'
 import { Line } from 'react-chartjs-2'
 import {
   Chart as ChartJS,
   CategoryScale, LinearScale, LineElement,
   PointElement, Title, Tooltip, Legend, Filler,
 } from 'chart.js'
-import { getClients, getTimeline } from '../services/api'
+import { getClients, getTimeline, getPrediccion } from '../services/api'
+
+function cssVar(v) {
+  return getComputedStyle(document.documentElement).getPropertyValue(v).trim()
+}
 
 ChartJS.register(CategoryScale, LinearScale, LineElement, PointElement, Title, Tooltip, Legend, Filler)
 
@@ -107,11 +112,12 @@ function EventCard({ event }) {
 }
 
 export default function ClientTimeline() {
-  const [clients, setClients]     = useState([])
-  const [selected, setSelected]   = useState('')
-  const [timeline, setTimeline]   = useState(null)
-  const [loading, setLoading]     = useState(false)
-  const [search, setSearch]       = useState('')
+  const [clients, setClients]       = useState([])
+  const [selected, setSelected]     = useState('')
+  const [timeline, setTimeline]     = useState(null)
+  const [prediccion, setPrediccion] = useState(null)
+  const [loading, setLoading]       = useState(false)
+  const [search, setSearch]         = useState('')
 
   useEffect(() => { getClients().then(setClients) }, [])
 
@@ -123,9 +129,13 @@ export default function ClientTimeline() {
   const handleSelect = (id) => {
     setSelected(id)
     setLoading(true)
+    setPrediccion(null)
     getTimeline(id)
       .then(setTimeline)
       .finally(() => setLoading(false))
+    getPrediccion(id)
+      .then(setPrediccion)
+      .catch(() => {}) // silencioso si endpoint no disponible
   }
 
   const client = timeline?.cliente
@@ -164,10 +174,10 @@ export default function ClientTimeline() {
   const chartOpts = {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: { legend: { labels: { color: '#94a3b8', font: { size: 11 } } } },
+    plugins: { legend: { labels: { color: cssVar('--text-muted'), font: { size: 11 } } } },
     scales: {
-      x: { ticks: { color: '#64748b', maxTicksLimit: 12 }, grid: { color: '#1e293b' } },
-      y: { ticks: { color: '#64748b' }, grid: { color: '#1e293b' } },
+      x: { ticks: { color: cssVar('--text-muted'), maxTicksLimit: 12 }, grid: { color: cssVar('--border') } },
+      y: { ticks: { color: cssVar('--text-muted') }, grid: { color: cssVar('--border') } },
     },
   }
 
@@ -257,6 +267,64 @@ export default function ClientTimeline() {
                   ))}
                 </div>
               </div>
+
+              {/* Prediction */}
+              {prediccion && (
+                <motion.div
+                  className="card"
+                  style={{ marginBottom: '1rem' }}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <div className="card-title">Probabilidad de pago — próximos 7 días</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.75rem' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ height: 8, background: 'var(--border)', borderRadius: 4, overflow: 'hidden' }}>
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${Math.round(prediccion.probabilidad_pago_7d * 100)}%` }}
+                          transition={{ duration: 0.6, ease: 'easeOut' }}
+                          style={{
+                            height: '100%',
+                            borderRadius: 4,
+                            background: prediccion.probabilidad_pago_7d > 0.6
+                              ? 'var(--success)' : prediccion.probabilidad_pago_7d > 0.3
+                              ? 'var(--warning)' : 'var(--danger)',
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <span style={{ fontWeight: 700, fontSize: '1.1rem', minWidth: '3rem', textAlign: 'right' }}>
+                      {Math.round(prediccion.probabilidad_pago_7d * 100)}%
+                    </span>
+                    <span className={`badge ${prediccion.confianza === 'alta' ? 'badge-green' : prediccion.confianza === 'media' ? 'badge-amber' : 'badge-gray'}`}>
+                      {prediccion.confianza}
+                    </span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', fontSize: '0.78rem' }}>
+                    {prediccion.factores_positivos?.length > 0 && (
+                      <div>
+                        <div style={{ color: 'var(--success)', fontWeight: 600, marginBottom: '0.3rem' }}>Factores positivos</div>
+                        {prediccion.factores_positivos.map((f, i) => (
+                          <div key={i} style={{ color: 'var(--text-muted)', marginBottom: '0.15rem' }}>+ {f}</div>
+                        ))}
+                      </div>
+                    )}
+                    {prediccion.factores_negativos?.length > 0 && (
+                      <div>
+                        <div style={{ color: 'var(--danger)', fontWeight: 600, marginBottom: '0.3rem' }}>Factores negativos</div>
+                        {prediccion.factores_negativos.map((f, i) => (
+                          <div key={i} style={{ color: 'var(--text-muted)', marginBottom: '0.15rem' }}>− {f}</div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+                    Modelo: {prediccion.modelo}
+                  </div>
+                </motion.div>
+              )}
 
               {/* Debt chart */}
               {evo.length > 1 && (
