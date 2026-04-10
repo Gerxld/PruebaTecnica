@@ -1,8 +1,9 @@
 import axios from 'axios'
 
-// Rutas relativas — el proxy de Vite (vite.config.js) reenvía /api/* → localhost:8000
-// En producción, el servidor web debe hacer el mismo proxy.
-const api = axios.create({ baseURL: '/api' })
+// En desarrollo: usa el proxy de Vite (/api → localhost:8000)
+// En producción: usa VITE_API_URL (ej: https://mi-backend.railway.app)
+const BASE = import.meta.env.VITE_API_URL ?? ''
+const api = axios.create({ baseURL: BASE || '/api' })
 
 /* Data & Status */
 export const getStatus     = ()           => api.get('/').then(r => r.data)
