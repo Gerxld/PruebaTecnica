@@ -13,6 +13,8 @@ Relaciones: TIENE_DEUDA, TUVO_INTERACCION, REALIZA, ATENDIDA_POR,
 import os
 from typing import Dict, List, Any, Optional
 
+from config import REFERENCE_DATE_STR
+
 try:
     from neo4j import AsyncGraphDatabase, AsyncDriver
     NEO4J_AVAILABLE = True
@@ -374,11 +376,12 @@ class Neo4jManager:
             result = await session.run(
                 """
                 MATCH (c:Cliente)-[:PROMETE]->(pr:PromesaPago)
-                WHERE pr.fecha_promesa < '2025-08-12'
+                WHERE pr.fecha_promesa < $ref_date
                   AND (pr.cumplida IS NULL OR pr.cumplida = false)
                 RETURN pr, c.nombre AS cliente_nombre, c.telefono AS telefono
                 ORDER BY pr.fecha_promesa
-                """
+                """,
+                ref_date=REFERENCE_DATE_STR,
             )
             rows = await result.data()
             return [

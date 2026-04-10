@@ -9,8 +9,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
 from collections import defaultdict
 
-# Reference date = data generation date
-REFERENCE_DATE = datetime(2025, 8, 12, tzinfo=timezone.utc)
+from config import REFERENCE_DATE
 
 RESULTADO_EXITOSO = {"pago_inmediato", "promesa_pago", "renegociacion"}
 
